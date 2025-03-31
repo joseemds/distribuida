@@ -1,0 +1,11 @@
+plugins {
+    id 'java-library'
+		id 'application'
+}
+
+application {
+	mainClass = "br.imd.ufrn.server.Server"
+}
+
+dependencies {
+}
