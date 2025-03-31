@@ -7,5 +7,10 @@ application {
 	mainClass = "br.imd.ufrn.server.Server"
 }
 
+run {
+	args = [project.properties.get("protocol") ?: "http"]
+
+}
+
 dependencies {
 }
