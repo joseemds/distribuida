@@ -4,25 +4,27 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 
-public class TcpProtocol implements ProtocolHandler {
-    private int port;
-    private ExecutorService executor;
-    private RequestHandler handler;
+public class TcpProtocol implements ProtocolHandler<Socket> {
+    private final int port;
+    private final ExecutorService executor;
 
-    TcpProtocol(int port, ExecutorService executor, RequestHandler handler) {
+    TcpProtocol(int port, ExecutorService executor) {
         this.port = port;
         this.executor = executor;
-        this.handler = handler;
     }
 
     public void startServer(){
-        try(ServerSocket serverSocket = new ServerSocket(8080, 300)) {
+        try(ServerSocket serverSocket = new ServerSocket(this.port, 300)) {
             while (true){
                 Socket conn = serverSocket.accept();
-                executor.submit(() -> handler.handleRequest(conn));
+                executor.submit(() -> this.handleRequest(conn));
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    public void handleRequest(Socket conn, int nextServer){
+
     }
 }
