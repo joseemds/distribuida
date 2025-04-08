@@ -1,10 +1,10 @@
 plugins {
     id 'java-library'
-		id 'application'
+	id 'application'
 }
 
 application {
-	mainClass = "br.imd.ufrn.client.Client"
+	mainClass = "br.imd.ufrn.gateway.Gateway"
 }
 
 dependencies {

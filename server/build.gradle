@@ -4,7 +4,7 @@ plugins {
 }
 
 application {
-	mainClass = "br.imd.ufrn.server.Server"
+	mainClass = "br.imd.ufrn.server.RunServer"
 }
 
 run {
