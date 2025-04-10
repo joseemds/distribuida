@@ -1,10 +1,10 @@
 plugins {
-    id 'java-library'
+	id 'java-library'
 	id 'application'
 }
 
 application {
-	mainClass = "br.imd.ufrn.server.RunServer"
+	mainClass = "br.imd.ufrn.gateway.RunGateway"
 }
 
 run {
