@@ -1,9 +1,5 @@
 package br.imd.ufrn.server;
 
-import br.imd.ufrn.server.protocol.action.Action;
-import br.imd.ufrn.server.protocol.ProtocolParser;
-import br.imd.ufrn.server.protocol.action.*;
-
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
@@ -12,46 +8,63 @@ import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class TCPServer implements Server{
-	private final ProtocolParser parser = new ProtocolParser();
-	@Override
-	public void run(int port) {
-		System.out.println("server started at port " + port);
-			try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-				 ServerSocket serverSocket = new ServerSocket(port, 1000);
-			){
-				while(true){
-					Socket conn = serverSocket.accept();
+import br.imd.ufrn.server.protocol.ProtocolParser;
+import br.imd.ufrn.server.protocol.action.*;
+import br.imd.ufrn.server.protocol.action.Action;
 
-					executor.submit(() -> handleRequest(conn));
+public class TCPServer implements Server {
+  private final ProtocolParser parser = new ProtocolParser();
 
-				}
+  @Override
+  public void run(int port) {
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        ServerSocket serverSocket = new ServerSocket(port, 1000); ) {
+      System.out.println("server started at port " + port);
+      sendRegister(port);
+      while (true) {
+        Socket conn = serverSocket.accept();
 
-			} catch (Exception e) {
-				throw new RuntimeException(e);
-		}
-	}
+        executor.submit(() -> handleRequest(conn));
+      }
 
-	private void handleRequest(Socket conn) {
-		try (conn;
-			 BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-			 PrintWriter out = new PrintWriter(conn.getOutputStream(), true)) {
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
 
-			String message = in.readLine();
-			System.out.println("Received: " + message);
+  private void handleRequest(Socket conn) {
+    try (conn;
+        BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        PrintWriter out = new PrintWriter(conn.getOutputStream(), true)) {
 
-			Action action = parser.parse(message);
+      String message = in.readLine();
+      System.out.println("Received: " + message);
 
-			String response = switch (action) {
-				case Create create -> "Document " + create.documentName() + "created";
-				case Edit edit -> "Edited " + edit.documentName() + " to " + edit.content();
-				case Get get -> "Document " + get.documentName() + "content is: ";
-			};
+      Action action = parser.parse(message);
 
-			out.println(response);
+      String response =
+          switch (action) {
+            case Create create -> "Document " + create.documentName() + "created";
+            case Edit edit -> "Edited " + edit.documentName() + " to " + edit.content();
+            case Get get -> "Document " + get.documentName() + "content is: ";
+          };
 
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-	}
+      out.println(response);
+
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  private void sendRegister(int port) {
+    try (Socket socket = new Socket("localhost", 8081);
+        PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
+
+      String message = "register:" + port;
+      out.println(message);
+
+    } catch (Exception e) {
+      throw new RuntimeException("Error when sending register", e);
+    }
+  }
 }

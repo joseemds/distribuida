@@ -42,7 +42,7 @@ public class VersionVector {
     // Compare versions for common nodes
     for (String nodeId : commonNodes) {
       if (v1Bigger && v2Bigger) {
-        break;  // No need to compare further
+        break; // No need to compare further
       }
       long v1Version = v1.getVersions().get(nodeId);
       long v2Version = v2.getVersions().get(nodeId);
@@ -67,19 +67,16 @@ public class VersionVector {
     }
   }
 
-
   private static void validateNotNull(VersionVector v1, VersionVector v2) {
     if (v1 == null || v2 == null) {
       throw new IllegalArgumentException("Cant compare null vectors");
     }
   }
 
-
-  private static SortedSet<String> getCommonNodes(SortedSet<String> v1Nodes,
-                                                  SortedSet<String> v2Nodes) {
+  private static SortedSet<String> getCommonNodes(
+      SortedSet<String> v1Nodes, SortedSet<String> v2Nodes) {
     SortedSet<String> commonNodes = new TreeSet<String>(v1Nodes);
     commonNodes.retainAll(v2Nodes);
     return commonNodes;
   }
-
 }
