@@ -15,10 +15,10 @@ import java.util.concurrent.Executors;
 public class TCPServer implements Server{
 	private final ProtocolParser parser = new ProtocolParser();
 	@Override
-	public void run() {
-		System.out.println("server started ");
+	public void run(int port) {
+		System.out.println("server started at port " + port);
 			try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-				 ServerSocket serverSocket = new ServerSocket(8080, 1000);
+				 ServerSocket serverSocket = new ServerSocket(port, 1000);
 			){
 				while(true){
 					Socket conn = serverSocket.accept();

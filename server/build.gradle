@@ -8,7 +8,7 @@ application {
 }
 
 run {
-	args = [project.properties.get("protocol") ?: "tcp"]
+	args = [project.properties.getOrDefault("protocol", "tcp"), project.properties.getOrDefault("port", 9000)]
 }
 
 dependencies {

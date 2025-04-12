@@ -17,16 +17,15 @@ public class ApiGateway {
     public ApiGateway(int port, String protocolType) {
         this.port = port;
         this.protocolHandler = createProtocolHandler(protocolType);
-        executor.submit(protocolHandler::handleServerRegister);
     }
 
     public void start() {
-
+        executor.submit(() -> protocolHandler.handleServerRegister(this::registerServer));
         this.protocolHandler.startServer();
     }
 
-    public void registerServer(String host, int port) {
-
+    private void registerServer(Integer port) {
+        this.registeredServers.add(port);
     }
 
     private int getNextServer() {

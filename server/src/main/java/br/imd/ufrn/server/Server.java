@@ -1,6 +1,6 @@
 package br.imd.ufrn.server;
 
 interface Server {
-    void run();
+    void run(int port);
 }
 

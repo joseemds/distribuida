@@ -1,10 +1,11 @@
 package br.imd.ufrn.gateway;
 
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ExecutorService;
+import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 
 public class TcpProtocol implements ProtocolHandler<Socket> {
@@ -46,7 +47,31 @@ public class TcpProtocol implements ProtocolHandler<Socket> {
     }
 
     @Override
-    public void handleService(){
+    public void handleServerRegister(IntConsumer registerServer) {
+        try(ServerSocket socket = new ServerSocket(8081);) {
+            Socket clientSocket = socket.accept();
+            BufferedReader in = new BufferedReader(
+                    new InputStreamReader(clientSocket.getInputStream()));
 
+            String message = in.readLine();
+            System.out.println("Received: " + message);
+
+            if (message != null && message.startsWith("register:")) {
+                String portStr = message.substring("register:".length());
+                try {
+                    int port = Integer.parseInt(portStr);
+                    registerServer.accept(port);
+                    System.out.println("Registered server on port: " + port);
+                } catch (NumberFormatException e) {
+                    System.err.println("Invalid port format: " + portStr);
+                }
+            }
+
+            in.close();
+            clientSocket.close();
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
