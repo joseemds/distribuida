@@ -40,8 +40,8 @@ public class ApiGateway {
   private ProtocolHandler createProtocolHandler(String protocol) {
     return switch (protocol) {
       case "TCP" -> new TcpProtocol(this.port, this.executor, this::getNextServer);
-      case "UDP" -> throw new Error("Unimplemented");
-      case "HTTP" -> throw new Error("Unimplemented");
+      case "UDP" -> new UdpProtocol(this.port, this.executor, this::getNextServer);
+      case "HTTP" -> new HttpProtocol(this.port, this.executor, this::getNextServer);
       default -> throw new Error("Unsupported protocol");
     };
   }

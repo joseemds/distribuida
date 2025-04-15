@@ -29,23 +29,6 @@ public class TcpProtocol implements ProtocolHandler<Socket> {
     }
   }
 
-  public void handleRequest(Socket clientSocket, Supplier<Integer> getNextServer) {
-    int nextPort = this.getNextServer.get();
-
-    try {
-      Socket serverSocket = new Socket("localhost", nextPort);
-      InputStream clientInput = clientSocket.getInputStream();
-      OutputStream serverOutput = serverSocket.getOutputStream();
-      clientInput.transferTo(serverOutput);
-
-      serverSocket.close();
-      clientSocket.close();
-
-    } catch (Exception e) {
-
-    }
-  }
-
   @Override
   public void handleServerRegister(IntConsumer registerServer) {
     try (ServerSocket socket = new ServerSocket(8081); ) {
@@ -74,6 +57,33 @@ public class TcpProtocol implements ProtocolHandler<Socket> {
       }
     } catch (IOException e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  public void handleRequest(Socket clientSocket, Supplier<Integer> getNextServer) {
+    int nextPort = this.getNextServer.get();
+
+    try {
+
+      Socket serverSocket = new Socket("localhost", nextPort);
+      System.out.println("Redirecting to server on port " + nextPort);
+
+      InputStream clientInput = clientSocket.getInputStream();
+      OutputStream clientOutput = serverSocket.getOutputStream();
+
+      InputStream serverInput = serverSocket.getInputStream();
+      OutputStream serverOutput = serverSocket.getOutputStream();
+      serverOutput.flush();
+
+      clientInput.transferTo(serverOutput);
+      serverInput.transferTo(clientOutput);
+      clientOutput.flush();
+
+      serverSocket.close();
+      clientSocket.close();
+
+    } catch (Exception e) {
+      throw new Error("Error handling request", e);
     }
   }
 }
