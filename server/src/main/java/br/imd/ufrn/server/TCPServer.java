@@ -5,15 +5,24 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import br.imd.ufrn.server.protocol.ProtocolParser;
 import br.imd.ufrn.server.protocol.action.*;
 import br.imd.ufrn.server.protocol.action.Action;
+import br.imd.ufrn.server.versionvector.Ordering;
+import br.imd.ufrn.server.versionvector.VersionVector;
+import br.imd.ufrn.server.versionvector.VersionedNote;
 
 public class TCPServer implements Server {
+
+  private final String serverId = "J";
   private final ProtocolParser parser = new ProtocolParser();
+  private final Map<String, VersionedNote> documents = new ConcurrentHashMap<>();
+
 
   @Override
   public void run(int port) {
@@ -44,9 +53,9 @@ public class TCPServer implements Server {
 
       String response =
           switch (action) {
-            case Create create -> "Document " + create.documentName() + "created";
-            case Edit edit -> "Edited " + edit.documentName() + " to " + edit.content();
-            case Get get -> "Document " + get.documentName() + "content is: ";
+            case Create create -> handleCreate(create);
+            case Edit edit -> handleEdit(edit);
+            case Get get -> handleGet(get);
           };
 
       out.println(response);
@@ -67,4 +76,56 @@ public class TCPServer implements Server {
       throw new RuntimeException("Error when sending register", e);
     }
   }
-}
+
+
+  private String handleCreate(Create create){
+    String documentName = create.documentName();
+
+    if (documents.containsKey(documentName)) {
+      return "ERROR: Document " + documentName + " already exists";
+    }
+    VersionVector initialVector = new VersionVector();
+    initialVector = initialVector.increment(serverId);
+
+    VersionedNote document = new VersionedNote("", initialVector);
+    documents.put(documentName, document);
+
+    return "SUCCESS: Document " + documentName + " created";
+
+
+  };
+  private String handleEdit(Edit edit) {
+    String documentName = edit.documentName();
+    String newContent = edit.content();
+
+    VersionedNote serverNote = documents.get(documentName);
+    if (serverNote == null) {
+      return "ERROR: Document " + documentName + " does not exist";
+    }
+
+    VersionVector updatedVector = serverNote.getVersionVector().increment(serverId);
+    Ordering comparison = VersionVector.compare(serverNote.getVersionVector(), serverNote.getVersionVector());
+
+    String s = switch (comparison) {
+      case Before -> "before";
+      case After -> "after";
+      case Concurrent -> "concurrent";
+    };
+
+    VersionedNote updatedDocument = new VersionedNote(newContent, updatedVector);
+
+    documents.put(documentName, updatedDocument);
+
+    System.out.println("Edited document " + documentName + " with new version " + updatedVector);
+    return "SUCCESS: Document " + documentName + " edited | " + updatedDocument.toString();
+  }
+  private String handleGet(Get get) {
+    String documentName = get.documentName();
+
+    VersionedNote document = documents.get(documentName);
+    if (document == null) {
+      return "ERROR: Document " + documentName + " does not exist";
+    }
+
+    return "SUCCESS: " + document.toString();
+  }}
