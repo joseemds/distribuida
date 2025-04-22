@@ -117,4 +117,35 @@ public class UdpProtocol implements ProtocolHandler<DatagramPacket> {
         }
     }
 
+
+    private void pipeBidirectional(Socket socketA, Socket socketB, ExecutorService executor) {
+        try {
+            InputStream inputA = socketA.getInputStream();
+            OutputStream outputA = socketA.getOutputStream();
+            InputStream inputB = socketB.getInputStream();
+            OutputStream outputB = socketB.getOutputStream();
+
+            executor.submit(() -> {
+                try {
+                    inputA.transferTo(outputB);
+                    socketB.shutdownOutput();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+
+            executor.submit(() -> {
+                try {
+                    inputB.transferTo(outputA);
+                    socketA.shutdownOutput();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to establish bidirectional pipe", e);
+        }
+    }
+
 }
