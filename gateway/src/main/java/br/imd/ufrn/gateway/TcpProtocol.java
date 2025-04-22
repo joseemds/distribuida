@@ -67,19 +67,8 @@ public class TcpProtocol implements ProtocolHandler<Socket> {
       Socket serverSocket = new Socket("localhost", nextPort);
       System.out.println("Redirecting to server on port " + nextPort);
 
-      InputStream clientInput = clientSocket.getInputStream();
-      OutputStream clientOutput = serverSocket.getOutputStream();
+      pipeBidirectional(clientSocket, serverSocket, executor);
 
-      InputStream serverInput = serverSocket.getInputStream();
-      OutputStream serverOutput = serverSocket.getOutputStream();
-      serverOutput.flush();
-
-      clientInput.transferTo(serverOutput);
-      serverInput.transferTo(clientOutput);
-      clientOutput.flush();
-
-      serverSocket.close();
-      clientSocket.close();
 
     } catch (Exception e) {
       throw new Error("Error handling request", e);
@@ -101,6 +90,37 @@ public class TcpProtocol implements ProtocolHandler<Socket> {
       return "healthy".equals(response);
     } catch (IOException e) {
       return false;
+    }
+  }
+
+
+  private void pipeBidirectional(Socket socketA, Socket socketB, ExecutorService executor) {
+    try {
+      InputStream inputA = socketA.getInputStream();
+      OutputStream outputA = socketA.getOutputStream();
+      InputStream inputB = socketB.getInputStream();
+      OutputStream outputB = socketB.getOutputStream();
+
+      executor.submit(() -> {
+        try {
+          inputA.transferTo(outputB);
+          socketB.shutdownOutput();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      });
+
+      executor.submit(() -> {
+        try {
+          inputB.transferTo(outputA);
+          socketA.shutdownOutput();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      });
+
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to establish bidirectional pipe", e);
     }
   }
 }

@@ -68,7 +68,7 @@ public class ApiGateway {
       }
 
       try {
-        TimeUnit.SECONDS.sleep(5); // Adjust health check interval as needed
+        TimeUnit.SECONDS.sleep(5);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
       }
