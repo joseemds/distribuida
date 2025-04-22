@@ -10,4 +10,6 @@ interface ProtocolHandler<T> {
   void handleRequest(T clientSocket, Supplier<Integer> getNextServer);
 
   void handleServerRegister(IntConsumer registerServer);
+
+  boolean isServerHealthy(Integer serverPort);
 }

@@ -6,17 +6,17 @@ import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import br.imd.ufrn.server.protocol.ProtocolParser;
 import br.imd.ufrn.server.protocol.action.*;
+import br.imd.ufrn.server.versionvector.VersionedDocument;
 
-public class HttpServer implements Server {
+public class HttpServer extends AbstractServer {
 
   @Override
   public void run(int port) {
     try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
          ServerSocket serverSocket = new ServerSocket(port, 1000)) {
-      System.out.println("server started at port " + port);
-      sendRegisterHttp(port);
+      System.out.println("HTTP server started at port " + port);
+      sendRegister(port);
 
       while (true) {
         Socket conn = serverSocket.accept();
@@ -25,6 +25,24 @@ public class HttpServer implements Server {
 
     } catch (Exception e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  @Override
+  protected void sendRegister(int port) {
+    try (
+            Socket socket = new Socket("localhost", 8081);
+            BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()))
+    ) {
+      String body = String.valueOf(port);
+      out.write("POST /register HTTP/1.0\r\n");
+      out.write("Content-Type: text/plain\r\n");
+      out.write("Content-Length: " + body.length() + "\r\n");
+      out.write("\r\n");
+      out.write(body);
+      out.flush();
+    } catch (Exception e) {
+      throw new RuntimeException("Error when sending HTTP register", e);
     }
   }
 
@@ -74,12 +92,10 @@ public class HttpServer implements Server {
         String docId = path.substring("/doc/".length());
         Action action = new Edit(docId, body);
         String result = handleAction(action);
+// TODO
+//        propagateChanges(docId);
+
         sendResponse(out, 200, "OK", result);
-      } else if (method.equals("CREATE") && path.startsWith("/doc/")) {
-        String docId = path.substring("/doc/".length());
-        Action action = new Create(docId);
-        String result = handleAction(action);
-        sendResponse(out, 201, "Created", result);
       } else {
         sendResponse(out, 404, "Not Found", "Unknown endpoint");
       }
@@ -87,14 +103,6 @@ public class HttpServer implements Server {
     } catch (Exception e) {
       e.printStackTrace();
     }
-  }
-
-  private String handleAction(Action action) {
-    return switch (action) {
-      case Create create -> "Document " + create.documentName() + " created";
-      case Edit edit -> "Edited " + edit.documentName() + " to " + edit.content();
-      case Get get -> "Document " + get.documentName() + " content is: ...";
-    };
   }
 
   private void sendResponse(BufferedWriter out, int status, String statusText, String body) throws IOException {
@@ -106,20 +114,10 @@ public class HttpServer implements Server {
     out.flush();
   }
 
-  private void sendRegisterHttp(int port) {
-    try (
-            Socket socket = new Socket("localhost", 8081);
-            BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()))
-    ) {
-      String body = String.valueOf(port);
-      out.write("POST /register HTTP/1.0\r\n");
-      out.write("Content-Type: text/plain\r\n");
-      out.write("Content-Length: " + body.length() + "\r\n");
-      out.write("\r\n");
-      out.write(body);
-      out.flush();
-    } catch (Exception e) {
-      throw new RuntimeException("Error when sending HTTP register", e);
-    }
+  protected void propagateChanges(VersionedDocument versionedDoc) {
+    // This is where you will implement the logic to propagate changes to other servers.
+    // Assuming the method to send the update to other servers is implemented.
+    System.out.println("Propagating changes for document: " + versionedDoc.getContent());
+    // Logic for propagating changes to other servers, e.g., sending HTTP/UDP requests.
   }
 }

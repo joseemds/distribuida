@@ -6,12 +6,10 @@ import java.net.InetAddress;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import br.imd.ufrn.server.protocol.ProtocolParser;
-import br.imd.ufrn.server.protocol.action.*;
 import br.imd.ufrn.server.protocol.action.Action;
+import br.imd.ufrn.server.versionvector.VersionedDocument;
 
-public class UDPServer implements Server {
-  private final ProtocolParser parser = new ProtocolParser();
+public class UDPServer extends AbstractServer {
   private static final int BUFFER_SIZE = 1024;
 
   @Override
@@ -27,7 +25,7 @@ public class UDPServer implements Server {
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
         socket.receive(packet);
 
-        executor.submit(() -> handleRequest(socket, packet));
+        executor.submit(() -> handleUdpRequest(socket, packet));
       }
 
     } catch (Exception e) {
@@ -35,18 +33,39 @@ public class UDPServer implements Server {
     }
   }
 
-  private void handleRequest(DatagramSocket socket, DatagramPacket packet) {
+  @Override
+  protected void sendRegister(int port) {
+    try (DatagramSocket socket = new DatagramSocket()) {
+      String message = "register:" + port;
+      byte[] buffer = message.getBytes();
+      InetAddress address = InetAddress.getByName("localhost");
+      DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, 8081);
+      socket.send(packet);
+    } catch (Exception e) {
+      throw new RuntimeException("Error when sending UDP register", e);
+    }
+  }
+
+  private void handleUdpRequest(DatagramSocket socket, DatagramPacket packet) {
     try {
       String message = new String(packet.getData(), 0, packet.getLength()).trim();
       System.out.println("Received: " + message);
 
-      Action action = parser.parse(message);
+      if ("healthcheck".equals(message)) {
+        System.out.println("Healthcheck received, sending healthy response.");
+        byte[] responseBytes = "healthy".getBytes();
+        DatagramPacket responsePacket = new DatagramPacket(
+                responseBytes,
+                responseBytes.length,
+                packet.getAddress(),
+                packet.getPort()
+        );
+        socket.send(responsePacket);
+        return;
+      }
 
-      String response = switch (action) {
-        case Create create -> "Document " + create.documentName() + " created";
-        case Edit edit -> "Edited " + edit.documentName() + " to " + edit.content();
-        case Get get -> "Document " + get.documentName() + " content is: ";
-      };
+      Action action = parser.parse(message);
+      String response = handleAction(action);
 
       byte[] responseBytes = response.getBytes();
       DatagramPacket responsePacket = new DatagramPacket(
@@ -62,15 +81,21 @@ public class UDPServer implements Server {
     }
   }
 
-  private void sendRegister(int port) {
+  protected void propagateChanges(VersionedDocument versionedDoc) {
     try (DatagramSocket socket = new DatagramSocket()) {
-      String message = "register:" + port;
-      byte[] buffer = message.getBytes();
+      String message = "sync:" + versionedDoc.getContent() + ":" + versionedDoc.getVersionVector().getVersions().toString();
+
+      // Send the message to the API Gateway (assuming localhost:8081)
       InetAddress address = InetAddress.getByName("localhost");
+      byte[] buffer = message.getBytes();
       DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, 8081);
       socket.send(packet);
+
+      System.out.println("Sent update to API Gateway: " + message);
+
     } catch (Exception e) {
-      throw new RuntimeException("Error when sending register", e);
+      e.printStackTrace();
+      throw new RuntimeException("Error propagating changes to the gateway via UDP", e);
     }
   }
 }

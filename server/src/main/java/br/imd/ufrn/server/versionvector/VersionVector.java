@@ -1,10 +1,11 @@
 package br.imd.ufrn.server.versionvector;
 
+import java.io.Serializable;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-public class VersionVector {
+public class VersionVector implements Serializable {
   private TreeMap<String, Long> versions;
 
   public VersionVector() {

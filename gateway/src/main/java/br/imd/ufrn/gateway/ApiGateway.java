@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class ApiGateway {
   private static final int DEFAULT_PORT = 8080;
@@ -11,6 +12,7 @@ public class ApiGateway {
   private int currentServerIndex = 0;
   private final ProtocolHandler protocolHandler;
   private final List<Integer> registeredServers = new ArrayList<>();
+  private final List<Integer> healthyServers = new ArrayList<>();
   private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
   public ApiGateway(int port, String protocolType) {
@@ -20,6 +22,7 @@ public class ApiGateway {
 
   public void start() {
     executor.submit(() -> protocolHandler.handleServerRegister(this::registerServer));
+    executor.submit(this::monitorHealth);
     this.protocolHandler.startServer();
   }
 
@@ -28,12 +31,13 @@ public class ApiGateway {
   }
 
   private int getNextServer() {
-    if (registeredServers.isEmpty()) {
-      throw new IllegalStateException("No servers registered");
+    if (healthyServers.isEmpty()) {
+      System.out.println("No healthy servers found");
+      throw new IllegalStateException("No healthy servers available");
     }
 
-    int serverPort = registeredServers.get(currentServerIndex);
-    currentServerIndex = (currentServerIndex + 1) % registeredServers.size();
+    int serverPort = healthyServers.get(currentServerIndex);
+    currentServerIndex = (currentServerIndex + 1) % healthyServers.size();
     return serverPort;
   }
 
@@ -45,4 +49,30 @@ public class ApiGateway {
       default -> throw new Error("Unsupported protocol");
     };
   }
+
+
+  private void monitorHealth() {
+    while (true) {
+      List<Integer> currentHealthyServers = new ArrayList<>();
+      synchronized (registeredServers) {
+        for (Integer serverPort : registeredServers) {
+          if (protocolHandler.isServerHealthy(serverPort)) {
+            currentHealthyServers.add(serverPort);
+          }
+        }
+      }
+
+      synchronized (healthyServers) {
+        healthyServers.clear();
+        healthyServers.addAll(currentHealthyServers);
+      }
+
+      try {
+        TimeUnit.SECONDS.sleep(5); // Adjust health check interval as needed
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
 }

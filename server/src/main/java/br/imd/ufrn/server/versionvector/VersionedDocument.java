@@ -1,27 +1,36 @@
 package br.imd.ufrn.server.versionvector;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.TreeMap;
 
-public class VersionedNote {
+public class VersionedDocument {
   private String content;
   private VersionVector versionVector;
-
-  public VersionedNote(String content, VersionVector versionVector) {
+  private Instant timestamp;
+  public VersionedDocument(String content, VersionVector versionVector) {
     this.content = content;
     this.versionVector = versionVector;
+    this.timestamp = Instant.now();
   }
 
   public String getContent() {
     return content;
   }
 
-  public VersionVector getVersionVector() {
-    return versionVector;
-
+  public void setContent(String content) {
+    this.content = content;
   }
 
-  public VersionedNote merge(VersionedNote other, String serverId) {
+  public VersionVector getVersionVector() {
+    return versionVector;
+  }
+
+  public Instant getTimestamp() {
+    return timestamp;
+  }
+
+  public VersionedDocument merge(VersionedDocument other, String serverId) {
     String mergedContent = this.content + "\n[MERGED WITH: " + other.content + "]";
 
     TreeMap<String, Long> mergedVersions = new TreeMap<>();
@@ -40,6 +49,6 @@ public class VersionedNote {
     VersionVector newVector = new VersionVector(mergedVersions);
     newVector = newVector.increment(serverId);
 
-    return new VersionedNote(mergedContent, newVector);
+    return new VersionedDocument(mergedContent, newVector);
   }
 }

@@ -1,3 +1,4 @@
 rootProject.name = 'distribuida'
 include ':server'
 include ':gateway'
+include ':cache'

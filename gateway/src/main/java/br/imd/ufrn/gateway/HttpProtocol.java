@@ -117,4 +117,32 @@ public class HttpProtocol implements ProtocolHandler<Socket> {
       throw new Error("Error handling request", e);
     }
   }
+
+  public boolean isServerHealthy(Integer serverPort) {
+    try (Socket socket = new Socket("localhost", serverPort)) {
+      socket.setSoTimeout(3000); // Set a timeout of 3 seconds for the connection
+
+      PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+      out.println("GET /healthcheck HTTP/1.1");
+      out.println("Host: localhost:" + serverPort);
+      out.println("Connection: Close");
+      out.println("");
+
+      BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+      String line;
+      while ((line = in.readLine()) != null) {
+        if (line.contains("HTTP/1.1 200 OK")) {
+          while ((line = in.readLine()) != null) {
+            if ("healthy".equals(line.trim())) {
+              return true;
+            }
+          }
+        }
+      }
+    } catch (IOException e) {
+      System.err.println("Error checking server health: " + e.getMessage());
+    }
+
+    return false;
+  }
 }

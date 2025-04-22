@@ -17,10 +17,6 @@ public class ProtocolParser {
     String action = tokenizer.nextToken();
 
     return switch (action) {
-      case "create" -> {
-        String documentName = tokenizer.nextToken().trim();
-        yield new Create(documentName);
-      }
       case "edit" -> {
         String documentName = tokenizer.nextToken().trim();
         String content = tokenizer.nextToken().trim();

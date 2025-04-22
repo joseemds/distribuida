@@ -5,35 +5,24 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import br.imd.ufrn.server.protocol.ProtocolParser;
-import br.imd.ufrn.server.protocol.action.*;
 import br.imd.ufrn.server.protocol.action.Action;
-import br.imd.ufrn.server.versionvector.Ordering;
-import br.imd.ufrn.server.versionvector.VersionVector;
-import br.imd.ufrn.server.versionvector.VersionedNote;
+import br.imd.ufrn.server.versionvector.VersionedDocument;
 
-public class TCPServer implements Server {
-
-  private final String serverId = "J";
-  private final ProtocolParser parser = new ProtocolParser();
-  private final Map<String, VersionedNote> documents = new ConcurrentHashMap<>();
-
+public class TCPServer extends AbstractServer {
 
   @Override
   public void run(int port) {
     try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-        ServerSocket serverSocket = new ServerSocket(port, 1000); ) {
-      System.out.println("server started at port " + port);
+         ServerSocket serverSocket = new ServerSocket(port, 1000)) {
+      System.out.println("TCP server started at port " + port);
       sendRegister(port);
+
       while (true) {
         Socket conn = serverSocket.accept();
-
-        executor.submit(() -> handleRequest(conn));
+        executor.submit(() -> handleTcpRequest(conn));
       }
 
     } catch (Exception e) {
@@ -41,22 +30,35 @@ public class TCPServer implements Server {
     }
   }
 
-  private void handleRequest(Socket conn) {
+  @Override
+  protected void sendRegister(int port) {
+    try (Socket socket = new Socket("localhost", 8081);
+         PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
+
+      String message = "register:" + port;
+      out.println(message);
+
+    } catch (Exception e) {
+      throw new RuntimeException("Error when sending TCP register", e);
+    }
+  }
+
+  private void handleTcpRequest(Socket conn) {
     try (conn;
-        BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-        PrintWriter out = new PrintWriter(conn.getOutputStream(), true)) {
+         BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+         PrintWriter out = new PrintWriter(conn.getOutputStream(), true)) {
 
       String message = in.readLine();
       System.out.println("Received: " + message);
 
-      Action action = parser.parse(message);
+      if ("healthcheck".equals(message)) {
+        System.out.println("Healthcheck received, sending healthy response.");
+        out.println("healthy");
+        return;
+      }
 
-      String response =
-          switch (action) {
-            case Create create -> handleCreate(create);
-            case Edit edit -> handleEdit(edit);
-            case Get get -> handleGet(get);
-          };
+      Action action = parser.parse(message);
+      String response = handleAction(action);
 
       out.println(response);
 
@@ -64,68 +66,19 @@ public class TCPServer implements Server {
       e.printStackTrace();
     }
   }
+  protected void propagateChanges(VersionedDocument versionedDoc) {
+    try (Socket gatewaySocket = new Socket("localhost", 8081);
+         PrintWriter out = new PrintWriter(gatewaySocket.getOutputStream(), true)) {
 
-  private void sendRegister(int port) {
-    try (Socket socket = new Socket("localhost", 8081);
-        PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
-
-      String message = "register:" + port;
+      String message = "sync:" + versionedDoc.getContent() + ":" + versionedDoc.getVersionVector().getVersions();
       out.println(message);
 
+
     } catch (Exception e) {
-      throw new RuntimeException("Error when sending register", e);
+      e.printStackTrace();
+      throw new RuntimeException("Error propagating changes to the gateway", e);
     }
   }
 
 
-  private String handleCreate(Create create){
-    String documentName = create.documentName();
-
-    if (documents.containsKey(documentName)) {
-      return "ERROR: Document " + documentName + " already exists";
-    }
-    VersionVector initialVector = new VersionVector();
-    initialVector = initialVector.increment(serverId);
-
-    VersionedNote document = new VersionedNote("", initialVector);
-    documents.put(documentName, document);
-
-    return "SUCCESS: Document " + documentName + " created";
-
-
-  };
-  private String handleEdit(Edit edit) {
-    String documentName = edit.documentName();
-    String newContent = edit.content();
-
-    VersionedNote serverNote = documents.get(documentName);
-    if (serverNote == null) {
-      return "ERROR: Document " + documentName + " does not exist";
-    }
-
-    VersionVector updatedVector = serverNote.getVersionVector().increment(serverId);
-    Ordering comparison = VersionVector.compare(serverNote.getVersionVector(), serverNote.getVersionVector());
-
-    String s = switch (comparison) {
-      case Before -> "before";
-      case After -> "after";
-      case Concurrent -> "concurrent";
-    };
-
-    VersionedNote updatedDocument = new VersionedNote(newContent, updatedVector);
-
-    documents.put(documentName, updatedDocument);
-
-    System.out.println("Edited document " + documentName + " with new version " + updatedVector);
-    return "SUCCESS: Document " + documentName + " edited | " + updatedDocument.toString();
-  }
-  private String handleGet(Get get) {
-    String documentName = get.documentName();
-
-    VersionedNote document = documents.get(documentName);
-    if (document == null) {
-      return "ERROR: Document " + documentName + " does not exist";
-    }
-
-    return "SUCCESS: " + document.toString();
-  }}
+}

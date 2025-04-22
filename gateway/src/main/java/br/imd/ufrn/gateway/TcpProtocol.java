@@ -39,7 +39,6 @@ public class TcpProtocol implements ProtocolHandler<Socket> {
             new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
 
         String message = in.readLine();
-        System.out.println("Received: " + message);
 
         if (message != null && message.startsWith("register:")) {
           String portStr = message.substring("register:".length());
@@ -84,6 +83,24 @@ public class TcpProtocol implements ProtocolHandler<Socket> {
 
     } catch (Exception e) {
       throw new Error("Error handling request", e);
+    }
+  }
+
+  public boolean isServerHealthy(Integer port) {
+    try (Socket socket = new Socket("localhost", port)) {
+      socket.setSoTimeout(2000);
+
+      OutputStream outputStream = socket.getOutputStream();
+      PrintWriter writer = new PrintWriter(outputStream, true);
+      writer.println("healthcheck");
+
+      InputStream inputStream = socket.getInputStream();
+      BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+      String response = reader.readLine();
+
+      return "healthy".equals(response);
+    } catch (IOException e) {
+      return false;
     }
   }
 }

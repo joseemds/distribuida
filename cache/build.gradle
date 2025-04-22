@@ -1,0 +1,15 @@
+plugins {
+	id 'java-library'
+	id 'application'
+}
+
+application {
+	mainClass = "br.imd.ufrn.cache.RunCache"
+}
+
+run {
+	args = [project.properties.getOrDefault("protocol", "tcp"), project.properties.getOrDefault("port", 7000)]
+}
+
+dependencies {
+}

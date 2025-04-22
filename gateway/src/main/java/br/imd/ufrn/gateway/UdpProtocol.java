@@ -92,4 +92,29 @@ public class UdpProtocol implements ProtocolHandler<DatagramPacket> {
             e.printStackTrace();
         }
     }
+
+    public boolean isServerHealthy(Integer port) {
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.setSoTimeout(2000);
+
+            String healthcheckMessage = "healthcheck";
+            byte[] sendData = healthcheckMessage.getBytes();
+            InetAddress serverAddress = InetAddress.getByName("localhost");
+
+            DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, serverAddress, port);
+            socket.send(sendPacket);
+
+            byte[] responseBuffer = new byte[1024];
+            DatagramPacket responsePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
+
+            socket.receive(responsePacket);
+
+            String response = new String(responsePacket.getData(), 0, responsePacket.getLength());
+
+            return "healthy".equals(response);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
 }
