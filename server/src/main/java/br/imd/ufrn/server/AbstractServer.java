@@ -16,6 +16,8 @@ public abstract class AbstractServer implements Server {
     @Override
     public abstract void run(int port);
 
+    protected abstract void writeLog();
+
     protected abstract void sendRegister(int port);
 
     protected abstract void propagateChanges(VersionedDocument versionedDoc);
@@ -56,4 +58,5 @@ public abstract class AbstractServer implements Server {
 
         return "SUCCESS: Document " + documentName + " content is: " + documents.get(documentName);
     }
+
 }
