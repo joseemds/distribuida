@@ -36,53 +36,59 @@ public class HttpProtocol implements ProtocolHandler<Socket> {
 
       while (true) {
         Socket clientSocket = socket.accept();
-        executor.submit(() -> {
-          try (
-                  BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                  BufferedWriter out = new BufferedWriter(new OutputStreamWriter(clientSocket.getOutputStream()))
-          ) {
-            String requestLine = in.readLine();
-            if (requestLine == null || !requestLine.startsWith("POST /register")) {
-              sendHttpResponse(out, 400, "Bad Request", "Invalid endpoint");
-              return;
-            }
+        executor.submit(
+            () -> {
+              try (BufferedReader in =
+                      new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                  BufferedWriter out =
+                      new BufferedWriter(new OutputStreamWriter(clientSocket.getOutputStream()))) {
+                String requestLine = in.readLine();
+                if (requestLine == null || !requestLine.startsWith("POST /register")) {
+                  sendHttpResponse(out, 400, "Bad Request", "Invalid endpoint");
+                  return;
+                }
 
-            String line;
-            int contentLength = 0;
-            while ((line = in.readLine()) != null && !line.isEmpty()) {
-              if (line.toLowerCase().startsWith("content-length:")) {
-                contentLength = Integer.parseInt(line.split(":")[1].trim());
+                String line;
+                int contentLength = 0;
+                while ((line = in.readLine()) != null && !line.isEmpty()) {
+                  if (line.toLowerCase().startsWith("content-length:")) {
+                    contentLength = Integer.parseInt(line.split(":")[1].trim());
+                  }
+                }
+
+                char[] bodyChars = new char[contentLength];
+                in.read(bodyChars, 0, contentLength);
+                String body = new String(bodyChars).trim();
+
+                try {
+                  int port = Integer.parseInt(body);
+                  registerServer.accept(port);
+                  System.out.println("Registered HTTP server on port: " + port);
+                  sendHttpResponse(out, 200, "OK", "Registered server on port " + port);
+                } catch (NumberFormatException e) {
+                  sendHttpResponse(out, 400, "Bad Request", "Invalid port format");
+                }
+
+              } catch (IOException e) {
+                e.printStackTrace();
+              } finally {
+                try {
+                  clientSocket.close();
+                } catch (IOException ignore) {
+                }
               }
-            }
-
-            char[] bodyChars = new char[contentLength];
-            in.read(bodyChars, 0, contentLength);
-            String body = new String(bodyChars).trim();
-
-            try {
-              int port = Integer.parseInt(body);
-              registerServer.accept(port);
-              System.out.println("Registered HTTP server on port: " + port);
-              sendHttpResponse(out, 200, "OK", "Registered server on port " + port);
-            } catch (NumberFormatException e) {
-              sendHttpResponse(out, 400, "Bad Request", "Invalid port format");
-            }
-
-          } catch (IOException e) {
-            e.printStackTrace();
-          } finally {
-            try {
-              clientSocket.close();
-            } catch (IOException ignore) {}
-          }
-        });
+            });
       }
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
   }
 
-  private void sendHttpResponse(BufferedWriter out, int statusCode, String statusText, String body) throws IOException {
+  @Override
+  public void sendError(Socket clientSocket, String errorMessage) {}
+
+  private void sendHttpResponse(BufferedWriter out, int statusCode, String statusText, String body)
+      throws IOException {
     out.write("HTTP/1.1 " + statusCode + " " + statusText + "\r\n");
     out.write("Content-Type: text/plain\r\n");
     out.write("Content-Length: " + body.length() + "\r\n");
@@ -92,75 +98,98 @@ public class HttpProtocol implements ProtocolHandler<Socket> {
   }
 
   public void handleRequest(Socket clientSocket, Supplier<Integer> getNextServer) {
-    int nextPort = this.getNextServer.get();
+    try (Socket serverSocket = new Socket("localhost", getNextServer.get())) {
+      serverSocket.setSoTimeout(5000);
 
-    try {
+      InputStream clientIn = clientSocket.getInputStream();
+      OutputStream clientOut = clientSocket.getOutputStream();
+      InputStream serverIn = serverSocket.getInputStream();
+      OutputStream serverOut = serverSocket.getOutputStream();
 
-      Socket serverSocket = new Socket("localhost", nextPort);
-      System.out.println("Redirecting to server on port " + nextPort);
+      byte[] buffer = new byte[4096];
+      int bytesRead;
 
-      pipeBidirectional(serverSocket, clientSocket);
+      if ((bytesRead = clientIn.read(buffer)) != -1) {
+        serverOut.write(buffer, 0, bytesRead);
+        serverOut.flush();
 
+        bytesRead = serverIn.read(buffer);
+        if (bytesRead != -1) {
+          clientOut.write(buffer, 0, bytesRead);
+          clientOut.flush();
+        } else {
+          System.out.println("No response received from server");
+        }
+      } else {
+        System.out.println("No data received from client");
+      }
     } catch (Exception e) {
+      sendError(clientSocket, "Error happened while handling request: " + e.getMessage());
+      safeClose(clientSocket);
       throw new Error("Error handling request", e);
+    } finally {
+      safeClose(clientSocket);
     }
   }
 
   public boolean isServerHealthy(Integer serverPort) {
     try (Socket socket = new Socket("localhost", serverPort)) {
-      socket.setSoTimeout(3000); // Set a timeout of 3 seconds for the connection
-
-      PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-      out.println("GET /healthcheck HTTP/1.1");
-      out.println("Host: localhost:" + serverPort);
-      out.println("Connection: Close");
-      out.println("");
+      BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+      out.write("GET /healthcheck HTTP/1.0\r\n");
+      out.write("Host: localhost:" + serverPort + "\r\n");
+      out.write("Connection: Close\r\n");
+      out.write("\r\n");
+      out.flush();
 
       BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+      String statusLine = in.readLine();
+
+      if (statusLine == null) {
+        System.err.println("No response from server at port " + serverPort);
+        return false;
+      }
+
+      boolean isSuccess = statusLine.contains("200 OK");
+
+      if (!isSuccess) {
+        System.err.println("Server responded with error: " + statusLine);
+        return false;
+      }
+
       String line;
-      while ((line = in.readLine()) != null) {
-        if (line.contains("HTTP/1.1 200 OK")) {
-          while ((line = in.readLine()) != null) {
-            if ("healthy".equals(line.trim())) {
-              return true;
-            }
-          }
+      int contentLength = 0;
+      while ((line = in.readLine()) != null && !line.isEmpty()) {
+        if (line.toLowerCase().startsWith("content-length:")) {
+          contentLength = Integer.parseInt(line.split(":")[1].trim());
         }
       }
-    } catch (IOException e) {
-      System.err.println("Error checking server health: " + e.getMessage());
-    }
 
-    return false;
+      if (contentLength > 0) {
+        char[] bodyChars = new char[contentLength];
+        in.read(bodyChars);
+        String body = new String(bodyChars).trim();
+
+        if ("healthy".equals(body)) {
+          System.out.println("Server on port " + serverPort + " is healthy");
+          return true;
+        }
+      }
+
+      System.err.println("Server on port " + serverPort + " is not healthy");
+      return false;
+
+    } catch (IOException e) {
+      return false;
+    }
   }
 
-  private void pipeBidirectional(Socket socketA, Socket socketB, ExecutorService executor) {
-    try {
-      InputStream inputA = socketA.getInputStream();
-      OutputStream outputA = socketA.getOutputStream();
-      InputStream inputB = socketB.getInputStream();
-      OutputStream outputB = socketB.getOutputStream();
 
-      executor.submit(() -> {
-        try {
-          inputA.transferTo(outputB);
-          socketB.shutdownOutput();
-        } catch (IOException e) {
-          e.printStackTrace();
-        }
-      });
-
-      executor.submit(() -> {
-        try {
-          inputB.transferTo(outputA);
-          socketA.shutdownOutput();
-        } catch (IOException e) {
-          e.printStackTrace();
-        }
-      });
-
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to establish bidirectional pipe", e);
+  private void safeClose(Socket socket) {
+    if (socket != null && !socket.isClosed()) {
+      try {
+        socket.close();
+      } catch (IOException ignored) {
+      }
     }
   }
 }

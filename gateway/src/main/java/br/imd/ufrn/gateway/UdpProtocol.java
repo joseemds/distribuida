@@ -7,145 +7,136 @@ import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 
 public class UdpProtocol implements ProtocolHandler<DatagramPacket> {
-    private final int port;
-    private final ExecutorService executor;
-    private final Supplier<Integer> getNextServer;
+  private final int port;
+  private final ExecutorService executor;
+  private final Supplier<Integer> getNextServer;
+  private DatagramSocket serverSocket;
 
-    public UdpProtocol(int port, ExecutorService executor, Supplier<Integer> getNextServer) {
-        this.port = port;
-        this.executor = executor;
-        this.getNextServer = getNextServer;
+  public UdpProtocol(int port, ExecutorService executor, Supplier<Integer> getNextServer) {
+    this.port = port;
+    this.executor = executor;
+    this.getNextServer = getNextServer;
+  }
+
+  public void startServer() {
+    try (DatagramSocket socket = new DatagramSocket(port)) {
+      this.serverSocket = socket;
+      System.out.println("UDP server listening on port " + port);
+
+      byte[] buffer = new byte[1024];
+
+      while (true) {
+        DatagramPacket requestPacket = new DatagramPacket(buffer, buffer.length);
+        socket.receive(requestPacket);
+
+        // Pass the original server socket to handleRequest
+        executor.submit(() -> handleRequest(requestPacket, getNextServer));
+      }
+
+    } catch (IOException e) {
+      e.printStackTrace();
     }
+  }
 
-    public void startServer() {
-        try (DatagramSocket socket = new DatagramSocket(port)) {
-            System.out.println("UDP server listening on port " + port);
+  @Override
+  public void handleServerRegister(IntConsumer registerServer) {
+    try (DatagramSocket socket = new DatagramSocket(8081)) {
+      System.out.println("Listening for UDP server registration on port 8081");
 
-            byte[] buffer = new byte[1024];
+      byte[] buffer = new byte[1024];
+      while (true) {
+        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+        socket.receive(packet);
 
-            while (true) {
-                DatagramPacket requestPacket = new DatagramPacket(buffer, buffer.length);
-                socket.receive(requestPacket);
+        String message = new String(packet.getData(), 0, packet.getLength());
 
-                executor.submit(() -> handleRequest(requestPacket, getNextServer));
-            }
-
-        } catch (IOException e) {
-            e.printStackTrace();
+        if (message.startsWith("register:")) {
+          try {
+            int port = Integer.parseInt(message.substring("register:".length()));
+            registerServer.accept(port);
+            System.out.println("Registered UDP server on port: " + port);
+          } catch (NumberFormatException e) {
+            System.err.println("Invalid UDP port: " + message);
+          }
         }
+      }
+    } catch (IOException e) {
+      throw new RuntimeException("Error in UDP register handler", e);
     }
+  }
 
-    @Override
-    public void handleServerRegister(IntConsumer registerServer) {
-        try (DatagramSocket socket = new DatagramSocket(8081)) {
-            System.out.println("Listening for UDP server registration on port 8081");
+  @Override
+  public void handleRequest(DatagramPacket clientPacket, Supplier<Integer> getNextServer) {
+    try (DatagramSocket forwardSocket = new DatagramSocket()) {
+      int nextPort = getNextServer.get();
+      String message = new String(clientPacket.getData(), 0, clientPacket.getLength());
+      System.out.printf("Forwarding UDP packet to server on port %d: %s%n", nextPort, message);
 
-            byte[] buffer = new byte[1024];
-            while (true) {
-                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                socket.receive(packet);
 
-                String message = new String(packet.getData(), 0, packet.getLength());
-                System.out.println("Received: " + message);
+      forwardSocket.setSoTimeout(5000);
 
-                if (message.startsWith("register:")) {
-                    try {
-                        int port = Integer.parseInt(message.substring("register:".length()));
-                        registerServer.accept(port);
-                        System.out.println("Registered UDP server on port: " + port);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid UDP port: " + message);
-                    }
-                }
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("Error in UDP register handler", e);
-        }
+      byte[] sendData = message.getBytes();
+      DatagramPacket forwardPacket =
+              new DatagramPacket(sendData, sendData.length, InetAddress.getByName("localhost"), nextPort);
+      forwardSocket.send(forwardPacket);
+
+      byte[] responseBuffer = new byte[1024];
+      DatagramPacket responsePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
+      forwardSocket.receive(responsePacket);
+
+      DatagramPacket reply =
+              new DatagramPacket(
+                      responsePacket.getData(),
+                      responsePacket.getLength(),
+                      clientPacket.getAddress(),
+                      clientPacket.getPort());
+      serverSocket.send(reply);
+      System.out.println("Response sent to client at " + clientPacket.getAddress() + ":" + clientPacket.getPort());
+
+    } catch (SocketTimeoutException e) {
+      System.err.println("Backend server timeout");
+      sendError(clientPacket, "Server timeout");
+    } catch (IOException e) {
+      System.err.println("Error handling request: " + e.getMessage());
+      sendError(clientPacket, "Internal error");
     }
+  }
 
-    public void handleRequest(DatagramPacket clientPacket, Supplier<Integer> getNextServer) {
-        int nextPort = getNextServer.get();
-        String message = new String(clientPacket.getData(), 0, clientPacket.getLength());
-        System.out.printf("Forwarding UDP packet to server on port %d: %s%n", nextPort, message);
 
-        try (DatagramSocket forwardSocket = new DatagramSocket()) {
-            byte[] sendData = message.getBytes();
-            InetAddress localhost = InetAddress.getByName("localhost");
+  public boolean isServerHealthy(Integer port) {
+    try (DatagramSocket socket = new DatagramSocket()) {
+      socket.setSoTimeout(5000);
 
-            DatagramPacket forwardPacket = new DatagramPacket(sendData, sendData.length, localhost, nextPort);
-            forwardSocket.send(forwardPacket);
+      String healthcheckMessage = "healthcheck";
+      byte[] sendData = healthcheckMessage.getBytes();
+      InetAddress serverAddress = InetAddress.getByName("localhost");
 
-            byte[] responseBuffer = new byte[1024];
-            DatagramPacket responsePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
-            forwardSocket.receive(responsePacket);
+      DatagramPacket sendPacket =
+          new DatagramPacket(sendData, sendData.length, serverAddress, port);
+      socket.send(sendPacket);
 
-            DatagramSocket replySocket = new DatagramSocket();
-            DatagramPacket reply = new DatagramPacket(
-                    responsePacket.getData(),
-                    responsePacket.getLength(),
-                    clientPacket.getAddress(),
-                    clientPacket.getPort()
-            );
-            replySocket.send(reply);
-            replySocket.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+      byte[] responseBuffer = new byte[1024];
+      DatagramPacket responsePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
+
+      socket.receive(responsePacket);
+
+      String response = new String(responsePacket.getData(), 0, responsePacket.getLength());
+
+      return "healthy".equals(response);
+    } catch (IOException e) {
+      return false;
     }
+  }
 
-    public boolean isServerHealthy(Integer port) {
-        try (DatagramSocket socket = new DatagramSocket()) {
-            socket.setSoTimeout(2000);
-
-            String healthcheckMessage = "healthcheck";
-            byte[] sendData = healthcheckMessage.getBytes();
-            InetAddress serverAddress = InetAddress.getByName("localhost");
-
-            DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, serverAddress, port);
-            socket.send(sendPacket);
-
-            byte[] responseBuffer = new byte[1024];
-            DatagramPacket responsePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
-
-            socket.receive(responsePacket);
-
-            String response = new String(responsePacket.getData(), 0, responsePacket.getLength());
-
-            return "healthy".equals(response);
-        } catch (IOException e) {
-            return false;
-        }
+  public void sendError(DatagramPacket clientPacket, String errorMessage) {
+    try {
+      byte[] errorData = errorMessage.getBytes();
+      DatagramPacket errorPacket =
+          new DatagramPacket(
+              errorData, errorData.length, clientPacket.getAddress(), clientPacket.getPort());
+      serverSocket.send(errorPacket);
+    } catch (IOException e) {
+      System.err.println("Failed to send error to client: " + e.getMessage());
     }
-
-
-    private void pipeBidirectional(Socket socketA, Socket socketB, ExecutorService executor) {
-        try {
-            InputStream inputA = socketA.getInputStream();
-            OutputStream outputA = socketA.getOutputStream();
-            InputStream inputB = socketB.getInputStream();
-            OutputStream outputB = socketB.getOutputStream();
-
-            executor.submit(() -> {
-                try {
-                    inputA.transferTo(outputB);
-                    socketB.shutdownOutput();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            });
-
-            executor.submit(() -> {
-                try {
-                    inputB.transferTo(outputA);
-                    socketA.shutdownOutput();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            });
-
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to establish bidirectional pipe", e);
-        }
-    }
-
+  }
 }

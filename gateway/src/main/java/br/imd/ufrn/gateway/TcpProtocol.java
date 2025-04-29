@@ -25,7 +25,7 @@ public class TcpProtocol implements ProtocolHandler<Socket> {
         executor.submit(() -> this.handleRequest(conn, this.getNextServer));
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      throw new RuntimeException(e);
     }
   }
 
@@ -60,18 +60,37 @@ public class TcpProtocol implements ProtocolHandler<Socket> {
   }
 
   public void handleRequest(Socket clientSocket, Supplier<Integer> getNextServer) {
-    int nextPort = this.getNextServer.get();
+    try (Socket serverSocket = new Socket("localhost", getNextServer.get())) {
+      serverSocket.setSoTimeout(5000);
 
-    try {
+      InputStream clientIn = clientSocket.getInputStream();
+      OutputStream clientOut = clientSocket.getOutputStream();
+      InputStream serverIn = serverSocket.getInputStream();
+      OutputStream serverOut = serverSocket.getOutputStream();
 
-      Socket serverSocket = new Socket("localhost", nextPort);
-      System.out.println("Redirecting to server on port " + nextPort);
+      byte[] buffer = new byte[4096];
+      int bytesRead;
 
-      pipeBidirectional(clientSocket, serverSocket, executor);
+      if ((bytesRead = clientIn.read(buffer)) != -1) {
+        serverOut.write(buffer, 0, bytesRead);
+        serverOut.flush();
 
-
+        bytesRead = serverIn.read(buffer);
+        if (bytesRead != -1) {
+          clientOut.write(buffer, 0, bytesRead);
+          clientOut.flush();
+        } else {
+          System.out.println("No response received from server");
+        }
+      } else {
+        System.out.println("No data received from client");
+      }
     } catch (Exception e) {
+      sendError(clientSocket, "Error happened while handling request: " + e.getMessage());
+      safeClose(clientSocket);
       throw new Error("Error handling request", e);
+    } finally {
+      safeClose(clientSocket);
     }
   }
 
@@ -93,34 +112,26 @@ public class TcpProtocol implements ProtocolHandler<Socket> {
     }
   }
 
-
-  private void pipeBidirectional(Socket socketA, Socket socketB, ExecutorService executor) {
+  public void sendError(Socket clientSocket, String errorMessage) {
     try {
-      InputStream inputA = socketA.getInputStream();
-      OutputStream outputA = socketA.getOutputStream();
-      InputStream inputB = socketB.getInputStream();
-      OutputStream outputB = socketB.getOutputStream();
+      OutputStream outputStream = clientSocket.getOutputStream();
+      PrintWriter writer = new PrintWriter(outputStream, true);
+      writer.println("ERROR: " + errorMessage);
+    } catch (IOException ignored) {
+    } finally {
+      try {
+        clientSocket.close();
+      } catch (IOException ignored) {
+      }
+    }
+  }
 
-      executor.submit(() -> {
-        try {
-          inputA.transferTo(outputB);
-          socketB.shutdownOutput();
-        } catch (IOException e) {
-          e.printStackTrace();
-        }
-      });
-
-      executor.submit(() -> {
-        try {
-          inputB.transferTo(outputA);
-          socketA.shutdownOutput();
-        } catch (IOException e) {
-          e.printStackTrace();
-        }
-      });
-
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to establish bidirectional pipe", e);
+  private void safeClose(Socket socket) {
+    if (socket != null && !socket.isClosed()) {
+      try {
+        socket.close();
+      } catch (IOException ignored) {
+      }
     }
   }
 }

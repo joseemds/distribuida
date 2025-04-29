@@ -16,7 +16,7 @@ public class TCPServer extends AbstractServer {
   @Override
   public void run(int port) {
     try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-         ServerSocket serverSocket = new ServerSocket(port, 1000)) {
+        ServerSocket serverSocket = new ServerSocket(port, 1000)) {
       System.out.println("TCP server started at port " + port);
       sendRegister(port);
 
@@ -31,9 +31,19 @@ public class TCPServer extends AbstractServer {
   }
 
   @Override
+  protected void writeLog(String key, String message) {
+    try(Socket socket = new Socket("localhost", 9999);
+        PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+    ){
+      out.println(key + ":" + message);
+
+    } catch (Exception e) {}
+  }
+
+  @Override
   protected void sendRegister(int port) {
     try (Socket socket = new Socket("localhost", 8081);
-         PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
+        PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
 
       String message = "register:" + port;
       out.println(message);
@@ -45,8 +55,8 @@ public class TCPServer extends AbstractServer {
 
   private void handleTcpRequest(Socket conn) {
     try (conn;
-         BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-         PrintWriter out = new PrintWriter(conn.getOutputStream(), true)) {
+        BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        PrintWriter out = new PrintWriter(conn.getOutputStream(), true)) {
 
       String message = in.readLine();
       System.out.println("Received: " + message);
@@ -66,19 +76,19 @@ public class TCPServer extends AbstractServer {
       e.printStackTrace();
     }
   }
+
   protected void propagateChanges(VersionedDocument versionedDoc) {
     try (Socket gatewaySocket = new Socket("localhost", 8081);
-         PrintWriter out = new PrintWriter(gatewaySocket.getOutputStream(), true)) {
+        PrintWriter out = new PrintWriter(gatewaySocket.getOutputStream(), true)) {
 
-      String message = "sync:" + versionedDoc.getContent() + ":" + versionedDoc.getVersionVector().getVersions();
+      String message =
+          "sync:" + versionedDoc.getContent() + ":" + versionedDoc.getVersionVector().getVersions();
       out.println(message);
-
+      System.out.println(versionedDoc);
 
     } catch (Exception e) {
       e.printStackTrace();
       throw new RuntimeException("Error propagating changes to the gateway", e);
     }
   }
-
-
 }

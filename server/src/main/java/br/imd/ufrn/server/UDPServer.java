@@ -15,7 +15,7 @@ public class UDPServer extends AbstractServer {
   @Override
   public void run(int port) {
     try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-         DatagramSocket socket = new DatagramSocket(port)) {
+        DatagramSocket socket = new DatagramSocket(port)) {
       System.out.println("UDP server started at port " + port);
       sendRegister(port);
 
@@ -30,6 +30,16 @@ public class UDPServer extends AbstractServer {
 
     } catch (Exception e) {
       throw new RuntimeException(e);
+    }
+  }
+  protected void writeLog(String target, String message) {
+    try (DatagramSocket socket = new DatagramSocket()) {
+      String logMessage = target + ":" + message;
+      byte[] buffer = logMessage.getBytes();
+      InetAddress address = InetAddress.getByName("localhost");
+      DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, 9999);
+      socket.send(packet);
+    } catch (Exception e) {
     }
   }
 
@@ -49,17 +59,13 @@ public class UDPServer extends AbstractServer {
   private void handleUdpRequest(DatagramSocket socket, DatagramPacket packet) {
     try {
       String message = new String(packet.getData(), 0, packet.getLength()).trim();
-      System.out.println("Received: " + message);
 
       if ("healthcheck".equals(message)) {
         System.out.println("Healthcheck received, sending healthy response.");
         byte[] responseBytes = "healthy".getBytes();
-        DatagramPacket responsePacket = new DatagramPacket(
-                responseBytes,
-                responseBytes.length,
-                packet.getAddress(),
-                packet.getPort()
-        );
+        DatagramPacket responsePacket =
+            new DatagramPacket(
+                responseBytes, responseBytes.length, packet.getAddress(), packet.getPort());
         socket.send(responsePacket);
         return;
       }
@@ -68,12 +74,9 @@ public class UDPServer extends AbstractServer {
       String response = handleAction(action);
 
       byte[] responseBytes = response.getBytes();
-      DatagramPacket responsePacket = new DatagramPacket(
-              responseBytes,
-              responseBytes.length,
-              packet.getAddress(),
-              packet.getPort()
-      );
+      DatagramPacket responsePacket =
+          new DatagramPacket(
+              responseBytes, responseBytes.length, packet.getAddress(), packet.getPort());
       socket.send(responsePacket);
 
     } catch (Exception e) {
@@ -83,7 +86,11 @@ public class UDPServer extends AbstractServer {
 
   protected void propagateChanges(VersionedDocument versionedDoc) {
     try (DatagramSocket socket = new DatagramSocket()) {
-      String message = "sync:" + versionedDoc.getContent() + ":" + versionedDoc.getVersionVector().getVersions().toString();
+      String message =
+          "sync:"
+              + versionedDoc.getContent()
+              + ":"
+              + versionedDoc.getVersionVector().getVersions().toString();
 
       // Send the message to the API Gateway (assuming localhost:8081)
       InetAddress address = InetAddress.getByName("localhost");

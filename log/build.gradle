@@ -4,11 +4,11 @@ plugins {
 }
 
 application {
-	mainClass = "br.imd.ufrn.cache.RunCache"
+	mainClass = "br.imd.ufrn.log.RunLog"
 }
 
 run {
-	args = [project.properties.getOrDefault("protocol", "tcp"), project.properties.getOrDefault("port", 7000)]
+	args = [project.properties.getOrDefault("protocol", "tcp"), project.properties.getOrDefault("port", 9999)]
 }
 
 dependencies {

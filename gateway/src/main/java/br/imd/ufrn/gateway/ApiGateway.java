@@ -7,7 +7,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class ApiGateway {
-  private static final int DEFAULT_PORT = 8080;
   private final int port;
   private int currentServerIndex = 0;
   private final ProtocolHandler protocolHandler;
@@ -31,14 +30,20 @@ public class ApiGateway {
   }
 
   private int getNextServer() {
-    if (healthyServers.isEmpty()) {
-      System.out.println("No healthy servers found");
-      throw new IllegalStateException("No healthy servers available");
-    }
+    synchronized (healthyServers) {
+      if (healthyServers.isEmpty()) {
+        System.out.println("No healthy servers found");
+        throw new IllegalStateException("No healthy servers available");
+      }
 
-    int serverPort = healthyServers.get(currentServerIndex);
-    currentServerIndex = (currentServerIndex + 1) % healthyServers.size();
-    return serverPort;
+      if (currentServerIndex >= healthyServers.size()) {
+        currentServerIndex = 0;
+      }
+
+      int serverPort = healthyServers.get(currentServerIndex);
+      currentServerIndex = (currentServerIndex + 1) % healthyServers.size();
+      return serverPort;
+    }
   }
 
   private ProtocolHandler createProtocolHandler(String protocol) {
@@ -50,29 +55,32 @@ public class ApiGateway {
     };
   }
 
-
-  private void monitorHealth() {
+private void monitorHealth() {
     while (true) {
-      List<Integer> currentHealthyServers = new ArrayList<>();
-      synchronized (registeredServers) {
-        for (Integer serverPort : registeredServers) {
-          if (protocolHandler.isServerHealthy(serverPort)) {
-            currentHealthyServers.add(serverPort);
-          }
+        List<Integer> currentHealthyServers = new ArrayList<>();
+        
+        List<Integer> serversToCheck;
+        synchronized (registeredServers) {
+            serversToCheck = new ArrayList<>(registeredServers);
         }
-      }
-
-      synchronized (healthyServers) {
-        healthyServers.clear();
-        healthyServers.addAll(currentHealthyServers);
-      }
-
-      try {
-        TimeUnit.SECONDS.sleep(5);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
+        
+        for (Integer serverPort : serversToCheck) {
+            if (protocolHandler.isServerHealthy(serverPort)) {
+                currentHealthyServers.add(serverPort);
+            }
+        }
+        
+        synchronized (healthyServers) {
+            healthyServers.clear();
+            healthyServers.addAll(currentHealthyServers);
+        }
+        
+        try {
+            TimeUnit.SECONDS.sleep(5);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            break;
+        }
     }
-  }
-
+}
 }

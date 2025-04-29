@@ -8,6 +8,7 @@ public class VersionedDocument {
   private String content;
   private VersionVector versionVector;
   private Instant timestamp;
+
   public VersionedDocument(String content, VersionVector versionVector) {
     this.content = content;
     this.versionVector = versionVector;
