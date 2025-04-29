@@ -2,6 +2,7 @@ package br.imd.ufrn.gateway;
 
 import java.io.IOException;
 import java.net.*;
+import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
@@ -19,22 +20,32 @@ public class UdpProtocol implements ProtocolHandler<DatagramPacket> {
   }
 
   public void startServer() {
-    try (DatagramSocket socket = new DatagramSocket(port)) {
-      this.serverSocket = socket;
+    try {
+      serverSocket = new DatagramSocket(null);
+      serverSocket.setReuseAddress(true);
+      serverSocket.bind(new InetSocketAddress(port));
       System.out.println("UDP server listening on port " + port);
 
       byte[] buffer = new byte[1024];
 
       while (true) {
         DatagramPacket requestPacket = new DatagramPacket(buffer, buffer.length);
-        socket.receive(requestPacket);
+        serverSocket.receive(requestPacket);
 
-        // Pass the original server socket to handleRequest
-        executor.submit(() -> handleRequest(requestPacket, getNextServer));
+        byte[] requestData = Arrays.copyOf(requestPacket.getData(), requestPacket.getLength());
+        DatagramPacket threadSafePacket = new DatagramPacket(
+                requestData,
+                requestData.length,
+                requestPacket.getAddress(),
+                requestPacket.getPort()
+        );
+
+        executor.submit(() -> handleRequest(threadSafePacket, getNextServer));
       }
-
     } catch (IOException e) {
       e.printStackTrace();
+    } finally {
+      if (serverSocket != null) serverSocket.close();
     }
   }
 
@@ -69,39 +80,36 @@ public class UdpProtocol implements ProtocolHandler<DatagramPacket> {
   public void handleRequest(DatagramPacket clientPacket, Supplier<Integer> getNextServer) {
     try (DatagramSocket forwardSocket = new DatagramSocket()) {
       int nextPort = getNextServer.get();
-      String message = new String(clientPacket.getData(), 0, clientPacket.getLength());
-      System.out.printf("Forwarding UDP packet to server on port %d: %s%n", nextPort, message);
-
+      System.out.printf("Forwarding UDP packet to server on port %d%n", nextPort);
 
       forwardSocket.setSoTimeout(5000);
-
-      byte[] sendData = message.getBytes();
-      DatagramPacket forwardPacket =
-              new DatagramPacket(sendData, sendData.length, InetAddress.getByName("localhost"), nextPort);
-      forwardSocket.send(forwardPacket);
+      forwardSocket.send(new DatagramPacket(
+              clientPacket.getData(),
+              clientPacket.getLength(),
+              InetAddress.getByName("localhost"),
+              nextPort
+      ));
 
       byte[] responseBuffer = new byte[1024];
       DatagramPacket responsePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
       forwardSocket.receive(responsePacket);
 
-      DatagramPacket reply =
-              new DatagramPacket(
-                      responsePacket.getData(),
-                      responsePacket.getLength(),
-                      clientPacket.getAddress(),
-                      clientPacket.getPort());
-      serverSocket.send(reply);
-      System.out.println("Response sent to client at " + clientPacket.getAddress() + ":" + clientPacket.getPort());
-
+      try (DatagramSocket responseSocket = new DatagramSocket(null)) {
+        responseSocket.setReuseAddress(true);
+        responseSocket.bind(new InetSocketAddress(port));
+        responseSocket.send(new DatagramPacket(
+                responsePacket.getData(),
+                responsePacket.getLength(),
+                clientPacket.getAddress(),
+                clientPacket.getPort()
+        ));
+      }
     } catch (SocketTimeoutException e) {
-      System.err.println("Backend server timeout");
       sendError(clientPacket, "Server timeout");
     } catch (IOException e) {
-      System.err.println("Error handling request: " + e.getMessage());
       sendError(clientPacket, "Internal error");
     }
   }
-
 
   public boolean isServerHealthy(Integer port) {
     try (DatagramSocket socket = new DatagramSocket()) {
@@ -129,14 +137,19 @@ public class UdpProtocol implements ProtocolHandler<DatagramPacket> {
   }
 
   public void sendError(DatagramPacket clientPacket, String errorMessage) {
-    try {
+    try (DatagramSocket errorSocket = new DatagramSocket(null)) {
+      errorSocket.setReuseAddress(true);
+      errorSocket.bind(new InetSocketAddress(port));
       byte[] errorData = errorMessage.getBytes();
-      DatagramPacket errorPacket =
-          new DatagramPacket(
-              errorData, errorData.length, clientPacket.getAddress(), clientPacket.getPort());
-      serverSocket.send(errorPacket);
+      errorSocket.send(new DatagramPacket(
+              errorData,
+              errorData.length,
+              clientPacket.getAddress(),
+              clientPacket.getPort()
+      ));
     } catch (IOException e) {
-      System.err.println("Failed to send error to client: " + e.getMessage());
+      System.err.println("Failed to send error: " + e.getMessage());
     }
   }
+
 }

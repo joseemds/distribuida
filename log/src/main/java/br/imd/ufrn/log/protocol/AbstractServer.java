@@ -2,7 +2,6 @@ package br.imd.ufrn.log.protocol;
 
 import java.util.Map;
 import java.util.Stack;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 

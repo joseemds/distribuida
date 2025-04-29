@@ -32,12 +32,12 @@ public class TCPServer extends AbstractServer {
 
   @Override
   protected void writeLog(String key, String message) {
-    try(Socket socket = new Socket("localhost", 9999);
-        PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-    ){
+    try (Socket socket = new Socket("localhost", 9999);
+        PrintWriter out = new PrintWriter(socket.getOutputStream(), true); ) {
       out.println(key + ":" + message);
 
-    } catch (Exception e) {}
+    } catch (Exception e) {
+    }
   }
 
   @Override

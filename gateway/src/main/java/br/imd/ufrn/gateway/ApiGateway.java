@@ -55,32 +55,32 @@ public class ApiGateway {
     };
   }
 
-private void monitorHealth() {
+  private void monitorHealth() {
     while (true) {
-        List<Integer> currentHealthyServers = new ArrayList<>();
-        
-        List<Integer> serversToCheck;
-        synchronized (registeredServers) {
-            serversToCheck = new ArrayList<>(registeredServers);
+      List<Integer> currentHealthyServers = new ArrayList<>();
+
+      List<Integer> serversToCheck;
+      synchronized (registeredServers) {
+        serversToCheck = new ArrayList<>(registeredServers);
+      }
+
+      for (Integer serverPort : serversToCheck) {
+        if (protocolHandler.isServerHealthy(serverPort)) {
+          currentHealthyServers.add(serverPort);
         }
-        
-        for (Integer serverPort : serversToCheck) {
-            if (protocolHandler.isServerHealthy(serverPort)) {
-                currentHealthyServers.add(serverPort);
-            }
-        }
-        
-        synchronized (healthyServers) {
-            healthyServers.clear();
-            healthyServers.addAll(currentHealthyServers);
-        }
-        
-        try {
-            TimeUnit.SECONDS.sleep(5);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            break;
-        }
+      }
+
+      synchronized (healthyServers) {
+        healthyServers.clear();
+        healthyServers.addAll(currentHealthyServers);
+      }
+
+      try {
+        TimeUnit.SECONDS.sleep(5);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        break;
+      }
     }
-}
+  }
 }

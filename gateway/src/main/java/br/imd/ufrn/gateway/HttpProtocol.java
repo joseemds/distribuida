@@ -183,7 +183,6 @@ public class HttpProtocol implements ProtocolHandler<Socket> {
     }
   }
 
-
   private void safeClose(Socket socket) {
     if (socket != null && !socket.isClosed()) {
       try {

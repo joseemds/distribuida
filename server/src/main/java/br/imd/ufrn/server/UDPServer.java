@@ -32,6 +32,7 @@ public class UDPServer extends AbstractServer {
       throw new RuntimeException(e);
     }
   }
+
   protected void writeLog(String target, String message) {
     try (DatagramSocket socket = new DatagramSocket()) {
       String logMessage = target + ":" + message;

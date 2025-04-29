@@ -31,7 +31,7 @@ public class HttpServer extends AbstractServer {
   @Override
   protected void writeLog(String target, String message) {
     try (Socket socket = new Socket("localhost", 9999);
-         BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()))) {
+        BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()))) {
 
       String body = target + ":" + message;
       out.write("POST /log HTTP/1.0\r\n");
@@ -44,7 +44,6 @@ public class HttpServer extends AbstractServer {
     } catch (Exception e) {
     }
   }
-
 
   @Override
   protected void sendRegister(int port) {
